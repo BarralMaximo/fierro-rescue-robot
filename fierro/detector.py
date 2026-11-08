@@ -22,7 +22,8 @@ def laser_points_to_pixels(xyz, rotation, translation, fx, fy, cx, cy):
     La matriz sale de su cuaternión con scipy: Rotation.from_quat([q.x, q.y, q.z, q.w]).as_matrix()); fx, fy, cx, cy son
     los intrínsecos de la cámara (de camera_info).
     """
-    camera_points = xyz @ rotation.T + translation
+    with np.errstate(invalid='ignore'):  # rayos sin eco (inf): dan nan y después se descartan
+        camera_points = xyz @ rotation.T + translation
     x_cam = camera_points[:, 0]
     y_cam = camera_points[:, 1]
     z_cam = camera_points[:, 2]
