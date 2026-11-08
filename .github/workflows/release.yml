@@ -1,0 +1,54 @@
+name: Release
+
+# Al pushear un tag anotado vX.Y.Z: corre el CI y, si pasa, publica la imagen en GHCR y crea el release. El texto del
+# release es el mensaje del tag.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Imagen en GHCR y release
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write # crear el release
+      packages: write # publicar la imagen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # trae el tag anotado entero, con su mensaje
+          persist-credentials: false
+
+      - name: El tag coincide con la versión del paquete
+        env:
+          TAG: ${{ github.ref_name }}
+        run: grep -q "<version>${TAG#v}</version>" package.xml || { echo "::error::$TAG no coincide con package.xml"; exit 1; }
+
+      - name: Imagen
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          TAG: ${{ github.ref_name }}
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker build -t "$image:${TAG#v}" -t "$image:latest" \
+            --label org.opencontainers.image.source="$SOURCE" \
+            --label org.opencontainers.image.version="${TAG#v}" .
+          docker push --all-tags "$image"
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --notes-from-tag --title "Fierro ${TAG#v}"
