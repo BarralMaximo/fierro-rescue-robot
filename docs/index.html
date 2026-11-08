@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fierro · demo de la misión</title>
+<meta name="description" content="Una misión completa de Fierro, el robot de búsqueda y rescate del Challenge JAR 2026, simulada con el mismo código que corre en el robot.">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #111827; --muted: #6b7280; --border: #e5e7eb;
+    --wall: #1f2937; --seen: #d1fae5; --trail: #0284c7; --lidar: #f97316; --robot: #111827; --cam: rgba(250, 204, 21, .35);
+    --red: #dc2626; --blue: #2563eb; --ok: #16a34a; --warn: #d97706; --off: #9ca3af; --tour: #9ca3af;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b0f17; --panel: #111827; --text: #e5e7eb; --muted: #9ca3af; --border: #1f2937;
+      --wall: #d1d5db; --seen: #0f3d2e; --trail: #38bdf8; --lidar: #fb923c; --robot: #f9fafb; --cam: rgba(250, 204, 21, .25);
+      --red: #f87171; --blue: #60a5fa; --ok: #4ade80; --warn: #fbbf24; --off: #6b7280; --tour: #4b5563;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header, main, footer { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  header { padding-top: 24px; }
+  h1 { font-size: 1.6rem; margin: 0; }
+  h1 span { color: var(--muted); font-weight: 400; }
+  .lead { color: var(--muted); margin: 4px 0 16px; max-width: 70ch; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+  canvas { display: block; width: 100%; aspect-ratio: 1; border-radius: 12px 12px 0 0; }
+  .controls { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  button, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--trail); outline-offset: 2px; }
+  input[type=range] { flex: 1; min-width: 120px; accent-color: var(--trail); }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 9ch; text-align: right; }
+  aside { display: grid; gap: 16px; }
+  aside .card { padding: 12px 14px; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat b { display: block; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: .8rem; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  #cands li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-variant-numeric: tabular-nums; }
+  .chip { font-size: .75rem; padding: 0 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+  #log { max-height: 240px; overflow: auto; font-size: .85rem; }
+  #log li { padding: 3px 0; border-bottom: 1px solid var(--border); }
+  #log li:last-child { border-bottom: 0; }
+  #log time { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: .85rem; }
+  .legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; border-radius: 2px; }
+  footer { color: var(--muted); font-size: .85rem; padding: 16px; }
+  a { color: var(--trail); }
+  .empty { color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fierro <span>· demo de la misión</span></h1>
+  <p class="lead" id="lead">El mismo código que maneja el robot, corriendo en el simulador de los tests: el lidar busca las cajas que el mapa no tiene, la cámara confirma cuáles son víctimas y el robot vuelve a la largada.</p>
+</header>
+<main>
+  <section class="card">
+    <canvas id="map" role="img" aria-label="Mapa del laberinto con el recorrido del robot"></canvas>
+    <div class="controls">
+      <button id="play" aria-label="Reproducir o pausar">▶</button>
+      <button id="restart" aria-label="Volver al inicio">⟲</button>
+      <input id="seek" type="range" min="0" value="0" aria-label="Momento de la misión">
+      <span class="time" id="time">0.0 s</span>
+      <select id="speed" aria-label="Velocidad">
+        <option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="8">8×</option>
+      </select>
+    </div>
+  </section>
+  <aside>
+    <div class="card">
+      <h2>Estado</h2>
+      <div class="stats">
+        <div class="stat"><b id="state">—</b><span>misión</span></div>
+        <div class="stat"><b id="found">0/0</b><span>víctimas</span></div>
+        <div class="stat"><b id="seen">0 %</b><span>visto</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Candidatos</h2>
+      <ul id="cands"><li class="empty">Ninguno todavía</li></ul>
+    </div>
+    <div class="card">
+      <h2>Qué decide el robot</h2>
+      <ul id="log"><li class="empty">Arranca el recorrido</li></ul>
+    </div>
+    <div class="card">
+      <h2>Referencias</h2>
+      <div class="legend">
+        <span><i style="background:var(--red)"></i>víctima</span>
+        <span><i style="background:var(--blue)"></i>señuelo</span>
+        <span><i style="background:var(--lidar)"></i>lidar</span>
+        <span><i style="background:var(--cam)"></i>cámara</span>
+        <span><i style="background:var(--seen)"></i>ya visto</span>
+        <span><i style="background:var(--tour)"></i>punto de paso</span>
+      </div>
+    </div>
+  </aside>
+</main>
+<footer id="foot">
+  Simulación cinemática con motores como los del robot real (retardo, zona muerta y giro desparejo); la percepción se simula con la misma regla que usan los tests.
+  Código en <a id="repo" href="https://github.com/BarralMaximo/fierro-rescue-robot">github.com/BarralMaximo/fierro-rescue-robot</a>.
+</footer>
+<script src="run.js"></script>
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const canvas = $("#map"), ctx = canvas.getContext("2d");
+const STATE = { going: "buscando", returning: "volviendo", done: "terminó" };
+const CAND = { pending: ["en la lista", "--warn"], target: ["mirándolo", "--warn"], reported: ["víctima", "--ok"],
+               no_red: ["sin rojo", "--off"], phantom: ["fantasma", "--off"], red_unreported: ["sin reporte", "--off"],
+               blocked: ["tapado", "--off"], no_path: ["sin camino", "--off"] };
+let D, F, k = 0, playing = false, speed = 4, acc = 0, last = null;
+let walls, seen, seenCtx, seenImg, seenUpTo = -1, seenCount = 0, free = 1, scale = 1;
+
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const lastOf = (key) => { for (let i = k; i >= 0; i--) if (key in F[i]) return F[i][key]; return null; };
+
+function grid() {
+  // Una imagen del tamaño de la grilla (una celda por pixel) que después se escala sin suavizar
+  const c = document.createElement("canvas");
+  c.width = D.map.w; c.height = D.map.h;
+  return c;
+}
+
+function init(data) {
+  D = data; F = D.frames;
+  $("#seek").max = F.length - 1;
+  free = D.map.w * D.map.h - D.map.walls.length;
+  walls = grid(); seen = grid();
+  seenCtx = seen.getContext("2d");
+  const s = D.summary;
+  $("#lead").textContent += ` En esta corrida: ${s.reported} de ${s.victims} víctimas, ${D.decoys.length} señuelos descartados y de vuelta en la largada a los ${Math.round(s.time)} s, sin pasar a menos de ${s.clearance} cm de nada.`;
+  const repo = `https://github.com/${D.repo}`;
+  Object.assign($("#repo"), { href: repo, textContent: repo.slice(8) });
+  if (D.commit) $("#foot").insertAdjacentHTML("beforeend", ` Esta repetición la generó el CI en el commit <a href="${repo}/commit/${D.commit}">${D.commit.slice(0, 7)}</a>.`);
+  paintWalls();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { paintWalls(); resetSeen(); draw(); });
+  new ResizeObserver(resize).observe(canvas);
+  $("#play").onclick = () => setPlaying(!playing);
+  $("#restart").onclick = () => { seek(0); setPlaying(true); };
+  $("#seek").oninput = (e) => { seek(+e.target.value); };
+  $("#speed").onchange = (e) => { speed = +e.target.value; };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
+    if (e.key === "ArrowRight") seek(Math.min(F.length - 1, k + 5));
+    if (e.key === "ArrowLeft") seek(Math.max(0, k - 5));
+  });
+  resize();
+  // #t=40 abre la corrida en ese momento, en pausa
+  const t = parseFloat((location.hash.match(/t=([\d.]+)/) || [])[1]);
+  if (t >= 0) seek(Math.min(F.length - 1, Math.round(t / D.dt)));
+  else setPlaying(!matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
+function paintWalls() {
+  const c = walls.getContext("2d"), img = c.createImageData(D.map.w, D.map.h);
+  const [r, g, b] = rgb(css("--wall"));
+  for (const i of D.map.walls) {
+    const p = ((D.map.h - 1 - Math.floor(i / D.map.w)) * D.map.w + (i % D.map.w)) * 4;
+    img.data.set([r, g, b, 255], p);
+  }
+  c.putImageData(img, 0, 0);
+}
+
+function resetSeen() { seenImg = seenCtx.createImageData(D.map.w, D.map.h); seenUpTo = -1; seenCount = 0; }
+
+function updateSeen() {
+  if (!seenImg || k < seenUpTo) resetSeen();
+  const [r, g, b] = rgb(css("--seen"));
+  for (let i = seenUpTo + 1; i <= k; i++) {
+    for (const c of F[i].v) {
+      img_set(seenImg, ((D.map.h - 1 - Math.floor(c / D.map.w)) * D.map.w + (c % D.map.w)) * 4, r, g, b);
+      seenCount++;
+    }
+  }
+  seenUpTo = k;
+  seenCtx.putImageData(seenImg, 0, 0);
+}
+function img_set(img, p, r, g, b) { img.data[p] = r; img.data[p + 1] = g; img.data[p + 2] = b; img.data[p + 3] = 255; }
+
+function rgb(color) {
+  const c = document.createElement("canvas").getContext("2d");
+  c.fillStyle = color; c.fillRect(0, 0, 1, 1);
+  return c.getImageData(0, 0, 1, 1).data;
+}
+
+function resize() {
+  const px = canvas.clientWidth * devicePixelRatio;
+  canvas.width = canvas.height = Math.round(px);
+  scale = px / (D.map.w * D.map.res);
+  draw();
+}
+
+// Metros (o cm, con cm = true) del mapa -> pixeles del canvas
+const X = (x) => (x - D.map.ox) * scale, Y = (y) => canvas.height - (y - D.map.oy) * scale;
+const cm = (v) => v / 100;
+
+function seek(i) { k = i; acc = 0; draw(); }
+function setPlaying(on) {
+  playing = on; $("#play").textContent = on ? "❚❚" : "▶";
+  if (on && k >= F.length - 1) k = 0;
+  if (on) { last = null; requestAnimationFrame(tick); }
+}
+function tick(ts) {
+  if (!playing) return;
+  if (last !== null) acc += ((ts - last) / 1000) * speed;
+  last = ts;
+  while (acc >= D.dt && k < F.length - 1) { k++; acc -= D.dt; }
+  draw();
+  if (k >= F.length - 1) setPlaying(false); else requestAnimationFrame(tick);
+}
+
+function box([x, y], color, size = D.box) {
+  const h = (cm(size) / 2) * scale;
+  ctx.fillStyle = color;
+  ctx.fillRect(X(cm(x)) - h, Y(cm(y)) - h, 2 * h, 2 * h);
+}
+
+function ring([x, y], color, r, dash = []) {
+  ctx.beginPath(); ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, scale * 0.025);
+  ctx.arc(X(cm(x)), Y(cm(y)), r * scale, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
+}
+
+function draw() {
+  if (!D) return;
+  const f = F[k], [px, py, yaw] = [cm(f.p[0]), cm(f.p[1]), f.p[2]];
+  updateSeen();
+  ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(seen, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(walls, 0, 0, canvas.width, canvas.height);
+
+  // Plan: los puntos de paso que calculó al llegar el mapa
+  ctx.fillStyle = css("--tour");
+  for (const [x, y] of D.tour) { ctx.beginPath(); ctx.arc(X(cm(x)), Y(cm(y)), 0.05 * scale, 0, 2 * Math.PI); ctx.fill(); }
+
+  // Cajas: víctimas y señuelos (el robot no sabe cuál es cuál hasta mirarlas)
+  for (const v of D.victims) box(v, css("--red"));
+  for (const d of D.decoys) box(d, css("--blue"));
+
+  // Recorrido
+  ctx.beginPath(); ctx.strokeStyle = css("--trail"); ctx.lineWidth = Math.max(1.5, scale * 0.02); ctx.lineJoin = "round";
+  for (let i = 0; i <= k; i++) { const [x, y] = F[i].p; i ? ctx.lineTo(X(cm(x)), Y(cm(y))) : ctx.moveTo(X(cm(x)), Y(cm(y))); }
+  ctx.stroke();
+
+  // Candidatos y reportes
+  const cands = lastOf("c") || [], reports = lastOf("r") || [];
+  for (const [x, y, why] of cands) ring([x, y], css((CAND[why] || ["", "--off"])[1]), 0.24, why === "pending" ? [4, 4] : []);
+  for (const r of reports) ring(r, css("--ok"), 0.3);
+
+  // Lidar
+  ctx.fillStyle = css("--lidar");
+  const d = Math.max(1.5, scale * 0.015);
+  f.l.forEach((r, i) => {
+    if (!r) return;
+    const a = D.ray0 + i * D.ray_step;
+    ctx.fillRect(X(px + cm(r) * Math.cos(a)) - d / 2, Y(py + cm(r) * Math.sin(a)) - d / 2, d, d);
+  });
+
+  // Robot: el chasis (rectángulo) y hacia dónde mira la cámara
+  ctx.save(); ctx.translate(X(px), Y(py)); ctx.rotate(-yaw);
+  ctx.fillStyle = css("--cam"); ctx.beginPath(); ctx.moveTo(cm(D.body.front) * scale, 0);
+  ctx.arc(cm(D.body.front) * scale, 0, 1.2 * scale, -D.fov / 2, D.fov / 2); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = css("--robot");
+  ctx.fillRect(-cm(D.body.rear) * scale, -cm(D.body.side) * scale, cm(D.body.front + D.body.rear) * scale, cm(2 * D.body.side) * scale);
+  ctx.fillStyle = css("--panel");
+  ctx.beginPath(); ctx.moveTo(cm(D.body.front) * scale * 0.9, 0); ctx.lineTo(0, -cm(D.body.side) * scale * 0.6); ctx.lineTo(0, cm(D.body.side) * scale * 0.6); ctx.fill();
+  ctx.restore();
+
+  panel(f, cands, reports);
+}
+
+function panel(f, cands, reports) {
+  $("#seek").value = k;
+  $("#time").textContent = `${f.t.toFixed(1)} s`;
+  $("#state").textContent = STATE[f.s] || f.s;
+  $("#found").textContent = `${reports.length}/${D.victims.length}`;
+  $("#seen").textContent = `${Math.round((100 * seenCount) / free)} %`;
+  $("#cands").innerHTML = cands.length ? cands.map(([x, y, why]) => {
+    const [label, color] = CAND[why] || [why, "--off"];
+    return `<li><span>(${(x / 100).toFixed(2)}, ${(y / 100).toFixed(2)})</span><span class="chip" style="color:var(${color})">${label}</span></li>`;
+  }).join("") : '<li class="empty">Ninguno todavía</li>';
+  const msgs = [];
+  for (let i = 0; i <= k; i++) for (const m of F[i].m || []) msgs.push(`<li><time>${F[i].t.toFixed(0)} s</time>${m}</li>`);
+  $("#log").innerHTML = msgs.length ? msgs.reverse().join("") : '<li class="empty">Arranca el recorrido</li>';
+}
+
+// Al final, con todo ya definido: run.js corre antes que este script y deja la corrida en RUN
+if (typeof RUN === "object") init(RUN);
+else $("#lead").textContent = "Falta docs/run.js: se genera con python3 docs/demo.py.";
+</script>
+</body>
+</html>
