@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import yaml
 
-from fierro.localizer import turn_source
+from fierro.ros_utils import turn_source
 
 PARAMS = Path(__file__).parents[1] / 'params' / 'params.yaml'
 

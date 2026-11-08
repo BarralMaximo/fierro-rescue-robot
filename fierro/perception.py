@@ -16,7 +16,7 @@ from sensor_msgs.msg import CameraInfo, Image, LaserScan
 
 from fierro.core import Board, DetectionClusterer, normalize
 from fierro.detector import VisionProcessor
-from fierro.localizer import MAP_QOS, node_params, seconds, yaw_of
+from fierro.ros_utils import MAP_QOS, node_params, seconds, yaw_of
 
 THRESHOLDS = ('red_hue_low_1', 'red_hue_high_1', 'red_hue_low_2', 'red_hue_high_2', 'min_saturation', 'min_value', 'half_box', 'erosion_px', 'max_jump', 'min_rays')
 

@@ -15,8 +15,8 @@ from std_msgs.msg import Empty
 from tf2_ros import Buffer, TransformListener
 
 from fierro.core import Board, normalize
-from fierro.localizer import MAP_QOS, Localizer, node_params, turn_source, yaw_of, z_row
 from fierro.mission import Mission
+from fierro.ros_utils import MAP_QOS, interpolate, node_params, turn_source, yaw_of, z_row
 
 class Navigator(Node):
     """
@@ -280,7 +280,7 @@ class Navigator(Node):
         except Exception: return None
 
         t1, x1, y1, th1 = Time.from_msg(tf.header.stamp).nanoseconds * 1e-9, tf.transform.translation.x, tf.transform.translation.y, yaw_of(tf.transform.rotation)
-        a, b = Localizer.interpolate(self.turns, t0, self.max_age), Localizer.interpolate(self.turns, t1, self.max_age)
+        a, b = interpolate(self.turns, t0, self.max_age), interpolate(self.turns, t1, self.max_age)
         d_odom, d_imu = normalize(th1 - th0), None if a is None or b is None else b[0] - a[0]
         dth = d_imu if turn_source(d_odom, d_imu, self.imu_check) == 'imu' else d_odom
         c, s = math.cos(th0), math.sin(th0)
