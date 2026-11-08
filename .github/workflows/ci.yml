@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call: # el release lo corre antes de publicar
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: pipx run ruff==0.17.4 check --output-format=github .
+
+  test:
+    name: Tests (ROS 2 Humble)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Imagen
+        run: docker build -t fierro .
+
+      - name: Tests
+        run: docker run --rm fierro python3 -m pytest -q src/fierro/test
+
+      - name: El launch arranca y espera el mapa
+        # Sin /map los nodos no hacen nada, pero tienen que seguir vivos: timeout corta con 124
+        run: |
+          docker run --rm fierro bash -c '
+            timeout -s INT 15 ros2 launch fierro fierro.launch.py victims:=3 > launch.log 2>&1
+            rc=$?
+            cat launch.log
+            [ "$rc" -eq 124 ] && grep -q "Esperando el mapa" launch.log'
