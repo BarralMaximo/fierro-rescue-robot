@@ -1,3 +1,10 @@
+"""
+Detector de víctimas sin ROS: la cámara dice qué es rojo y el lidar dice dónde está.
+
+Proyecta cada rayo del lidar sobre la foto, se queda con los que caen en rojo y devuelve centros de caja. Lo usa el nodo
+perception; test_detector.py lo mide en escenas sintéticas.
+"""
+
 import cv2
 import numpy as np
 
@@ -15,12 +22,11 @@ def mask_red(hsv_image, hue_low_1, hue_high_1, hue_low_2, hue_high_2, min_satura
 
 def laser_points_to_pixels(xyz, rotation, translation, fx, fy, cx, cy):
     """
-    Convertir cada punto del lidar en el pixel (u, v) donde caería si la cámara lo estuviera mirando.
+    Pixel (u, v) donde cae cada punto del lidar en la foto, y si está delante de la cámara (in_front).
 
-    Parámetros: xyz son los puntos del lidar (N, 3) en su frame. rotation es una matriz 3x3 y translation un vector de 3
-    (la tf laser_link -> cam_1_color_optical_frame.
-    La matriz sale de su cuaternión con scipy: Rotation.from_quat([q.x, q.y, q.z, q.w]).as_matrix()); fx, fy, cx, cy son
-    los intrínsecos de la cámara (de camera_info).
+    xyz: puntos del lidar (N, 3) en su frame. rotation (3x3) y translation (3,): la TF laser_link ->
+    cam_1_color_optical_frame; la matriz sale del cuaternión con Rotation.from_quat([q.x, q.y, q.z, q.w]).as_matrix().
+    fx, fy, cx, cy: los intrínsecos de la cámara (de camera_info).
     """
     with np.errstate(invalid='ignore'):  # rayos sin eco (inf): dan nan y después se descartan
         camera_points = xyz @ rotation.T + translation
@@ -30,7 +36,7 @@ def laser_points_to_pixels(xyz, rotation, translation, fx, fy, cx, cy):
 
     in_front = z_cam > 0.01
 
-    # proyeccion pinhole
+    # proyección pinhole
     with np.errstate(divide='ignore', invalid='ignore'):
         u = fx * (x_cam / z_cam) + cx
         v = fy * (y_cam / z_cam) + cy
@@ -38,6 +44,8 @@ def laser_points_to_pixels(xyz, rotation, translation, fx, fy, cx, cy):
     return u, v, in_front
 
 class VisionProcessor:
+    """Rojo en la foto + distancias del lidar -> centros de las cajas rojas, en el frame del lidar."""
+
     def __init__(self, red_hue_low_1, red_hue_high_1, red_hue_low_2, red_hue_high_2, min_saturation, min_value, half_box, erosion_px, max_jump, min_rays):
         # Umbrales HSV, tamaño de la caja y filtros de paralaje: los valores están solo en params.yaml (sección perception), comentados.
         # Elegidos con fotos reales del robot con la luz alterada
@@ -105,7 +113,7 @@ class VisionProcessor:
         spans = segments(np.roll(r, -cut), self.max_jump, self.min_rays)
         red_idx = (np.concatenate(spans).astype(int) + cut) % len(r) if spans else np.array([], int)
 
-        # 5. CONVERSIÓN GEOMÉTRICA
+        # 5. De la cara de la caja a su centro
         # El láser rebota en la cara de la caja y el juez mide desde el centro: se estira cada punto
         # media caja más a lo largo de su rayo, (r + half_box) / r.
         r = ranges[red_idx]

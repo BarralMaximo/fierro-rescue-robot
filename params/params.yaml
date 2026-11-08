@@ -28,7 +28,7 @@ perception:
     report_rays: 100                # rayos rojos sumados para reportar una caja; en el bag se juntan en 0.8 s y los reportes quedan a < 6 cm (juez: 100 puntos a 0.25 m)
     min_observations: 3             # en al menos estos scans: una foto mala sola no alcanza
     max_spread: 0.08                # m: grupos más dispersos (MAD de sus detecciones) no se reportan
-    red_observations: 2             # con esto, el grupo sin reportar va a /jar/red: el navegador sigue mirando ese candidato
+    red_observations: 2             # con esto, el grupo sin reportar va a /jar/red: el navigator sigue mirando ese candidato
 
 localizer:
   ros__parameters:

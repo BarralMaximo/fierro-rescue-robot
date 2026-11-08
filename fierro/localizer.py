@@ -1,3 +1,10 @@
+"""
+Nodo localizer: dónde está el robot en el mapa.
+
+Filtro de partículas propio (core.ParticleFilter): predice con las ruedas y el giróscopo y corrige con el lidar contra
+el mapa. Publica la TF map -> odom, /jar/pose y /jar/confidence.
+"""
+
 import math
 from collections import deque
 
@@ -77,7 +84,7 @@ class Localizer(Node):
         self.pose_pub = self.create_publisher(PoseStamped, '/jar/pose', 10)
         self.confidence_pub = self.create_publisher(Float32, '/jar/confidence', 10)
 
-        # Escuchamos
+        # Suscripciones
         self.create_subscription(OccupancyGrid, '/map', self.on_map, MAP_QOS)
         self.create_subscription(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data)
         self.create_subscription(Odometry, '/odom', self.on_odom, 50)
@@ -88,7 +95,7 @@ class Localizer(Node):
 
         # Estado inicial
         self.board = self.pf = self.last = None
-        self.map_odom = (0.0, 0.0, 0.0)  # Prior: Origen. Se cambia al localizarse
+        self.map_odom = (0.0, 0.0, 0.0)  # hasta localizarse, map y odom coinciden
         self.odoms = deque(maxlen=200)  # (t, x, y, yaw) de /odom: los últimos 20 s, para interpolar
         self.turns = deque(maxlen=400)  # (t, yaw integrado de la IMU)
         self.imu_yaw, self.imu_t, self.imu_row = 0.0, None, None
@@ -169,7 +176,7 @@ class Localizer(Node):
         wz = float(self.imu_row @ [w.x, w.y, w.z])
         t = seconds(msg.header.stamp)
 
-        if self.board is None: self.still.append(wz)  # Antes del mapa esperamos quietitos
+        if self.board is None: self.still.append(wz)  # antes del mapa el robot espera quieto: lo que mida es sesgo
 
         # Cuadratura
         if self.imu_t is not None and 0.0 < t - self.imu_t < self.imu_gap: self.imu_yaw += (wz - self.bias) * (t - self.imu_t)
@@ -285,7 +292,7 @@ class Localizer(Node):
                 self.last = (ox, oy, oyaw, imu)  # candidate es la pose en t: el próximo movimiento se mide desde acá
             self.bad = 0
 
-        # Armamos un mensaje de ROS con la pose en el mapa
+        # La pose en el mapa, como mensaje de ROS
         pose = PoseStamped()
         pose.header.frame_id = 'map'
         pose.header.stamp = Time(nanoseconds=round(t * 1e9)).to_msg()  # instante medio del scan, al que corresponde est
@@ -329,7 +336,7 @@ def main(args=None):
     como una relocalización (~0.35 s).
     Los callbacks de sensores comparten el grupo por defecto y corren de a uno, sin candados.
     """
-    rclpy.init(args=args)  # Nos comunicamos con ROS
+    rclpy.init(args=args)
     node = Localizer()
     executor = MultiThreadedExecutor()  # publish_tf en su propio hilo; los callbacks de sensores siguen de a uno
     executor.add_node(node)

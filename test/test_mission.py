@@ -496,7 +496,7 @@ def test_occluded_box_is_not_a_phantom():
 
 def test_discards_decoy_in_about_a_second():
     """Un señuelo: la cámara lo tiene en cuadro y la percepción no ve rojo (/jar/red vacío cerca): se descarta tras
-    clear_time (1 s), no tras watch_time (3.5 s) como cuando el navegador solo se enteraba por los reportes."""
+    clear_time (1 s), no tras watch_time (3.5 s) como cuando el navigator solo se enteraba por los reportes."""
     grid = maze()
     blue = (1.5, -0.3)
     m, traj, done, t, reports, _ = simulate(with_box(grid, *blue), grid)

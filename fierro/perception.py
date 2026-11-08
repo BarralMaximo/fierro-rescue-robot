@@ -1,3 +1,11 @@
+"""
+Nodo perception: encuentra las víctimas y las reporta en /victimas.
+
+Cruza cada scan con la foto más cercana (detector.VisionProcessor), lleva las detecciones al mapa y las agrupa por caja
+(core.DetectionClusterer). Reporta una caja solo con evidencia suficiente, y avisa en /jar/red dónde ve rojo que todavía
+no reportó.
+"""
+
 import math
 
 import numpy as np
@@ -27,7 +35,7 @@ def build_report(x, y, now):
     PointStamped de un reporte, o ValueError. Cada mensaje en /victimas gasta uno de los N reportes, puntúe o no: nunca
     sale uno mal formado.
 
-    x, y: centro de la caja en metros, en el frame map. ahora: builtin_interfaces/Time.
+    x, y: centro de la caja en metros, en el frame map. now: builtin_interfaces/Time.
     """
     if not (math.isfinite(x) and math.isfinite(y)): raise ValueError(f'reporte con valores no finitos: x={x}, y={y}')
     msg = PointStamped()
@@ -53,7 +61,7 @@ class Perception(Node):
         self.report_rays = int(p['report_rays'])  # rayos rojos sumados para reportar una caja
         self.min_observations = int(p['min_observations'])  # en al menos estos scans
         self.max_spread = p['max_spread']  # m: grupos más dispersos no se reportan
-        self.red_observations = int(p['red_observations'])  # para avisarle al navegador que ahí hay rojo (/jar/red)
+        self.red_observations = int(p['red_observations'])  # para avisarle al navigator que ahí hay rojo (/jar/red)
         self.max_photo_lag = p['max_photo_lag']  # s: sin foto tan cerca del scan, el scan no se usa
         self.max_wait = p['max_wait']  # s: un scan espera hasta esto a que lleguen la TF de su instante y su foto; después se descarta
 
@@ -64,9 +72,10 @@ class Perception(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self.victims_pub = self.create_publisher(PointStamped, '/victimas', 10)
-        self.red_pub = self.create_publisher(PoseArray, '/jar/red', 10)  # interno: dónde ve rojo sin reportar todavía (para el navegador)
+        # interno: dónde ve rojo sin reportar todavía (para el navigator)
+        self.red_pub = self.create_publisher(PoseArray, '/jar/red', 10)
 
-        # Escuchamos
+        # Suscripciones
         self.create_subscription(OccupancyGrid, '/map', self.on_map, MAP_QOS)
         self.create_subscription(CameraInfo, '/cam_1/color/camera_info', self.on_camera_info, qos_profile_sensor_data)
         self.create_subscription(Image, '/cam_1/color/image_raw', self.on_image, qos_profile_sensor_data)
@@ -194,7 +203,7 @@ class Perception(Node):
 
     def publish_red(self):
         """
-        Publica en /jar/red los grupos sin reportar con red_observations observaciones o más: el navegador sigue mirando
+        Publica en /jar/red los grupos sin reportar con red_observations observaciones o más: el navigator sigue mirando
         un candidato con rojo cerca hasta el reporte y descarta en ~1 s uno sin rojo (sin esto, esperaba 3.5 s en cada
         señuelo).
         """

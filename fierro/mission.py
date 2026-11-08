@@ -1,3 +1,10 @@
+"""
+La misión sin ROS: caminos, candidatos, protección del chasis y regreso.
+
+Mission.step recibe la pose, el lidar y los reportes, y devuelve el comando de velocidad. El nodo navigator solo la
+conecta con los topics; test_mission.py la prueba entera en una simulación cinemática.
+"""
+
 import math
 
 import numpy as np

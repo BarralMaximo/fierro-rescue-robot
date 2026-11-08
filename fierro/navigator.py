@@ -1,3 +1,7 @@
+"""
+Nodo navigator: corre la misión (mission.Mission) y publica /cmd_vel y /done.
+"""
+
 import math
 from collections import deque
 
@@ -157,7 +161,7 @@ class Navigator(Node):
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.done_pub = self.create_publisher(Empty, '/done', 10)
 
-        # Escuchamos
+        # Suscripciones
         self.create_subscription(OccupancyGrid, '/map', self.on_map, MAP_QOS)
         self.create_subscription(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data)
         self.create_subscription(PoseStamped, '/jar/pose', self.on_pose, 10)
@@ -266,7 +270,7 @@ class Navigator(Node):
     # ---------- control ----------
     def near(self):
         """
-        El último scan en el frame del robot ahora, para frenar (_clear_ahead, tail_barrier, slow_down, giro_lidar):
+        El último scan en el frame del robot ahora, para frenar (_clear_ahead, tail_barrier, slow_down, turn_clearance):
         corrido lo que se movió el robot desde el scan, con la traslación de las ruedas (odom) y el giro del giróscopo,
         que no patina. Si la IMU no llega o gira al revés, el giro de las ruedas (turn_source). No pasa por map: una
         corrección del localizer en el medio no mueve lo que tiene cerca. En el bag, llevando cada scan al siguiente,

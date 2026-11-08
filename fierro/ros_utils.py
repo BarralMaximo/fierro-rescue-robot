@@ -54,10 +54,10 @@ def z_row(q):
     La IMU y el robot giran juntos y a la misma velocidad, pero cada uno lo cuenta con sus propios ejes. Un giro es
     positivo si, mirando desde la punta del eje z, se ve antihorario:
         - el robot tiene el z hacia el techo: doblar a la izquierda lo ve antihorario, +0.5 rad/s
-        - la IMU de Donatello está boca abajo, con el z hacia el piso: el mismo giro lo ve horario, -0.5 rad/s
+        - la IMU del robot real está boca abajo, con el z hacia el piso: el mismo giro lo ve horario, -0.5 rad/s
 
-    Devuelve cuánto aporta cada eje de la IMU al giro del robot. En Donatello da (0, 0, -1): solo cuenta el z, con el
-    signo cambiado.
+    Devuelve cuánto aporta cada eje de la IMU al giro del robot. En el robot real da (0, 0, -1): solo cuenta el z, con
+    el signo cambiado.
 
     ACLARACIÓN: alcanzaría con multiplicar por -1 el z que mide la IMU, pero se calcula desde la TF por robustez: si la
     IMU del robot de la competencia llegara a estar montada distinto y su TF lo refleja, se ajustaría solo.

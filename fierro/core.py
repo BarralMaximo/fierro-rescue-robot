@@ -1,3 +1,9 @@
+"""
+Núcleo sin ROS: el mapa, el filtro de partículas, el plan de recorrido y el agrupado de detecciones.
+
+Solo numpy y scipy, así que se prueba sin simulador (test_core.py). Lo usan los tres nodos.
+"""
+
 import math
 
 import numpy as np
@@ -11,8 +17,8 @@ def normalize(a):
     """
     Lleva un ángulo (rad) a [-π, π): la misma dirección, siempre con el mismo número.
 
-    IMPORTANTE: Siempre que se midan distancias angulares hay que pasar por esta función porque sino Fierro va a dar
-    vueltas como un bobolón antes de avanzar (179° − (−179°) da −2°, no 358°).
+    Toda diferencia de ángulos pasa por acá: de 179° a −179° hay 2° de giro, no 358°. Sin normalizar, el robot daría una
+    vuelta entera antes de avanzar.
 
     Acepta un número o un array de numpy.
     """
@@ -24,8 +30,8 @@ class Board:
 
     Al arrancar, el juez publica un OccupancyGrid: una lista plana de números (0 libre, 100 pared), uno por celda, más
     el tamaño, la resolución y el origen.
-    Board loconvierte una sola vez y después responde rápido las preguntas que hace todo el software: ¿es pared?, ¿a qué
-    distancia está la pared más cercana?, ¿cae dentro?
+    Board lo convierte una sola vez y después responde rápido las preguntas que hace todo el software: ¿es pared?,
+    ¿a qué distancia está la pared más cercana?, ¿cae dentro?
 
     Convenciones:
         - Celda (i, j): i es la fila y crece con y; j es la columna y crece con x. La fila 0 es la de abajo (y mínima),
@@ -73,7 +79,7 @@ class Board:
 
         return d
 
-# --- Localización (localizador) -------------------------------------------
+# --- Localización (localizer) ---------------------------------------------
 
 def log_likelihood(grid, poses, pts, sigma, z_rand):
     """
@@ -193,9 +199,8 @@ class ParticleFilter:
         """
         Repesa las partículas con un scan.
 
-        Peso nuevo ∝ peso viejo × verosimilitud^temperature.
-            -> Bayes de manual, la única diferncia es elevar a la temperatura, basicamente disminuimos las diferencias
-               para mantener el grupo variado
+        Peso nuevo ∝ peso viejo × verosimilitud^temperature. Es Bayes, con la verosimilitud elevada a temperature (< 1):
+        suaviza las diferencias entre partículas para que la nube no colapse en unas pocas.
 
         Remuestrea solo si las partículas efectivas (1/Σw²) bajan de n/2: remuestrear siempre empobrece la nube.
         """
@@ -328,10 +333,10 @@ def _two_opt(order, D):
     del medio (es "descruzarlos").
     Si suma menos, lo deja y repite hasta que ninguna inversión mejore. Incluye el tramo de vuelta a la largada, así
     optimiza el circuito completo.
-    IMPORTANTE: El resultado no tiene cruces que convenga deshacer, pero no es necesariamente el óptimo.
+    El resultado no tiene cruces que convenga deshacer, pero no es necesariamente el óptimo.
 
-    Supone D simétrica: ir de a a b cuesta lo mismo que de b a a (SI QUEREMOS PROBAR PESAR LOS NODOS POR VELOCIDAD HAY
-    QUE CAMBIAR EL ENFOQUE).
+    Supone D simétrica: ir de a a b cuesta lo mismo que de b a a. Si los tramos se pesaran por velocidad (ida y vuelta
+    distintas), haría falta otra variante.
     """
     improved = True
     while improved:
