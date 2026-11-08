@@ -1,4 +1,5 @@
 """Chequeos del núcleo sin ROS ni simulador, sobre un laberinto sintético."""
+
 import math
 from pathlib import Path
 from types import SimpleNamespace
@@ -6,24 +7,22 @@ from types import SimpleNamespace
 import numpy as np
 import yaml
 
-from fierro.core import (DetectionClusterer, ParticleFilter, Board, initial_search, match_fraction, line_of_sight, normalize, viewpoint_tour, segments)
+from fierro.core import (Board, DetectionClusterer, ParticleFilter, initial_search, line_of_sight, match_fraction, normalize, segments, viewpoint_tour)
 
 RES = 0.05
 # Los valores del robot (params.yaml del repo): core no tiene valores por defecto
 PARAMS = {k: SimpleNamespace(**v['ros__parameters']) for k, v in yaml.safe_load((Path(__file__).parents[1] / 'params' / 'params.yaml').read_text()).items()}
 LOC, NAV, PERCEPTION = PARAMS['localizer'], PARAMS['navigator'], PARAMS['perception']
 
-
 def maze():
     """6 x 5 m con perímetro y tres paredes internas; origen del mapa en (-1.5, -2.5)."""
     g = np.zeros((100, 120), np.int16)
     g[[0, -1], :] = 100
     g[:, [0, -1]] = 100
-    g[30:31, 0:80] = 100     # pared horizontal desde la izquierda
-    g[60:61, 40:120] = 100   # pared horizontal desde la derecha
-    g[60:100, 30:31] = 100   # pared vertical arriba a la izquierda
+    g[30:31, 0:80] = 100  # pared horizontal desde la izquierda
+    g[60:61, 40:120] = 100  # pared horizontal desde la derecha
+    g[60:100, 30:31] = 100  # pared vertical arriba a la izquierda
     return Board(g.ravel(), 120, 100, RES, -1.5, -2.5)
-
 
 def scan(grid, pose, n=90, max_range=8.0, noise=0.005, rng=None):
     """Puntos (B, 2) en el frame del robot, rayo a rayo hasta la primera pared."""
@@ -37,7 +36,6 @@ def scan(grid, pose, n=90, max_range=8.0, noise=0.005, rng=None):
     ranges = r[np.argmax(hit, axis=1)] + rng.normal(0, noise, n)
     return np.column_stack([ranges * np.cos(ang), ranges * np.sin(ang)])
 
-
 def test_initial_search_finds_start():
     grid = maze()
     real = np.array([0.15, -0.12, 0.25])
@@ -45,7 +43,6 @@ def test_initial_search_finds_start():
     assert math.hypot(*(est[:2] - real[:2])) < 0.05
     assert abs(normalize(est[2] - real[2])) < 0.05
     assert match_fraction(grid, est, scan(grid, real), LOC.match_tolerance) > 0.9
-
 
 def test_filter_tracks_robot_with_miscaled_odometry():
     grid, rng = maze(), np.random.default_rng(1)
@@ -65,7 +62,6 @@ def test_filter_tracks_robot_with_miscaled_odometry():
     assert math.hypot(*(est[:2] - real[:2])) < 0.06
     assert abs(normalize(est[2] - real[2])) < 0.05
 
-
 def test_tour_covers_maze():
     grid = maze()
     points, vis, drivable = viewpoint_tour(grid, (0.0, 0.0), NAV.robot_radius, NAV.lidar_range, NAV.tour_step, NAV.tour_coverage)
@@ -77,14 +73,12 @@ def test_tour_covers_maze():
     target = grid.free & (grid.dist > 0.10)
     assert seen[target].mean() > 0.9
 
-
 def test_clusterer_uses_median():
     rng = np.random.default_rng(3)
     a = DetectionClusterer(PERCEPTION.group_radius)
     for k in range(30):
         x, y = 1.0 + rng.normal(0, 0.03), 2.0 + rng.normal(0, 0.03)
-        if k % 10 == 0:
-            x += 0.25  # observación mala (el robot giraba)
+        if k % 10 == 0: x += 0.25  # observación mala (el robot giraba)
         g = a.add(x, y, 30)
     assert len(a.groups) == 1
     cx, cy = a.center(g)
@@ -93,33 +87,30 @@ def test_clusterer_uses_median():
     a.add(3.0, 3.0, 30)
     assert len(a.groups) == 2 and not a.ready(a.groups[1], PERCEPTION.report_rays, PERCEPTION.min_observations, PERCEPTION.max_spread)
 
-
 def test_report_needs_rays_in_several_scans():
-    """Reporta con report_rays rayos rojos en min_observations scans o más, sin importar si el robot se movió; una foto con muchos rayos sola no."""
+    """
+    Reporta con report_rays rayos rojos en min_observations scans o más, sin importar si el robot se movió; una foto con
+    muchos rayos sola no.
+    """
     a = DetectionClusterer(PERCEPTION.group_radius)
     g = a.add(1.0, 2.0, 10 * PERCEPTION.report_rays)
     ok = lambda: a.ready(g, PERCEPTION.report_rays, PERCEPTION.min_observations, PERCEPTION.max_spread)
-    for _ in range(PERCEPTION.min_observations - 2):
-        a.add(1.0, 2.0, 10 * PERCEPTION.report_rays)
-    assert not ok() # le falta un scan
+    for _ in range(PERCEPTION.min_observations - 2): a.add(1.0, 2.0, 10 * PERCEPTION.report_rays)
+    assert not ok()  # le falta un scan
     a.add(1.0, 2.0, 1)
     assert ok()
     a = DetectionClusterer(PERCEPTION.group_radius)
-    for k in range(PERCEPTION.min_observations + 2):
-        g = a.add(1.0, 2.0, PERCEPTION.report_rays // (PERCEPTION.min_observations + 3)) # pocos rayos (lejos): hacen falta más scans
+    for _ in range(PERCEPTION.min_observations + 2): g = a.add(1.0, 2.0, PERCEPTION.report_rays // (PERCEPTION.min_observations + 3))  # pocos rayos (lejos): hacen falta más scans
     assert not ok()
     a.add(1.0, 2.0, PERCEPTION.report_rays)
     assert ok()
     a = DetectionClusterer(PERCEPTION.group_radius)
-    for k in range(PERCEPTION.min_observations + 4):
-        g = a.add(1.0 + 0.15 * (k % 3 - 1), 2.0, PERCEPTION.report_rays) # tres posiciones a 15 cm: muy disperso
+    for k in range(PERCEPTION.min_observations + 4): g = a.add(1.0 + 0.15 * (k % 3 - 1), 2.0, PERCEPTION.report_rays)  # tres posiciones a 15 cm: muy disperso
     assert not ok()
-
 
 def test_segments_split_on_jumps_and_gaps():
     r = np.array([1.0, 1.02, 1.04, 1.5, 1.52, 1.54, 1.56, np.inf, 2.0, 2.01])
     assert segments(r, 0.1, 3) == [[0, 1, 2], [3, 4, 5, 6]]
-
 
 def test_line_of_sight():
     grid = maze()

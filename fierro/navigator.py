@@ -16,16 +16,18 @@ from tf2_ros import Buffer, TransformListener
 
 from fierro.core import Board, normalize
 from fierro.localizer import MAP_QOS, Localizer, node_params, turn_source, yaw_of, z_row
-from fierro.mission import Mission, slow_down, tail_barrier
+from fierro.mission import Mission
 
 class Navigator(Node):
     """
-    Le pasa a Mission la pose (TF map -> base_footprint del localizer), el lidar (en map y, para frenar, en el frame del robot: near) y las posiciones de
-    los reportes, y publica /cmd_vel y /done.
+    Le pasa a Mission la pose (TF map -> base_footprint del localizer), el lidar (en map y, para frenar, en el frame del
+    robot: near) y las posiciones de los reportes, y publica /cmd_vel y /done.
 
-    No se mueve antes de /map ni antes de que el localizer publique la largada (/jar/pose). Frena mientras falte /jar/pose o un scan nuevo (sensor_timeout).
+    No se mueve antes de /map ni antes de que el localizer publique la largada (/jar/pose). Frena mientras falte
+    /jar/pose o un scan nuevo (sensor_timeout).
     Después de /done no vuelve a publicar.
     """
+
     def __init__(self):
         super().__init__('navigator', automatically_declare_parameters_from_overrides=True)  # Registra el nodo en ROS con los parámetros de params.yaml
         p = node_params(self)  # Los valores están solo en params.yaml (sección navigator), comentados. Mission los lee del nodo
@@ -166,14 +168,14 @@ class Navigator(Node):
 
         # Estado inicial
         self.board = self.mission = self.t0 = self.start = self.ready_at = None
-        self.finished, self.reports = False, [] # posiciones de lo publicado en /victimas (por perception)
+        self.finished, self.reports = False, []  # posiciones de lo publicado en /victimas (por perception)
         self.lidar = np.zeros((0, 2))
-        self.scan_t = 0 # ns, hora de los sensores del último scan: la nuestra puede ser otra (el software en otra compu)
-        self.pose_at = self.lidar_at = None # cuándo llegó la última /jar/pose y el último scan pasado a map (nuestra hora)
-        self.red = [] # dónde ve rojo la percepción sin haberlo reportado (/jar/red)
-        self.pending = None # scan cuya TF todavía no llegó: se reintenta en cada ciclo (en el robot real llega ~20 ms después)
-        self.scan_base = None # el último scan para near: (t, pose de las ruedas en t (odom), puntos en base_footprint)
-        self.turns = deque(maxlen=400) # (t, giro integrado del giróscopo)
+        self.scan_t = 0  # ns, hora de los sensores del último scan: la nuestra puede ser otra (el software en otra compu)
+        self.pose_at = self.lidar_at = None  # cuándo llegó la última /jar/pose y el último scan pasado a map (nuestra hora)
+        self.red = []  # dónde ve rojo la percepción sin haberlo reportado (/jar/red)
+        self.pending = None  # scan cuya TF todavía no llegó: se reintenta en cada ciclo (en el robot real llega ~20 ms después)
+        self.scan_base = None  # el último scan para near: (t, pose de las ruedas en t (odom), puntos en base_footprint)
+        self.turns = deque(maxlen=400)  # (t, giro integrado del giróscopo)
         self.imu_yaw, self.imu_t, self.imu_row = 0.0, None, None
 
     # ---------- entradas ----------
@@ -183,8 +185,9 @@ class Navigator(Node):
 
     def on_pose(self, msg):
         """
-        La primera pose del localizer es la largada (adonde vuelve). No sale de la TF: map -> odom va adelantada tf_lead (0.3 s) y en ese lapso
-        la TF todavía da la pose de antes de localizarse (con el robot corrido 18 cm del origen, volvía al origen).
+        La primera pose del localizer es la largada (adonde vuelve). No sale de la TF: map -> odom va adelantada tf_lead
+        (0.3 s) y en ese lapso la TF todavía da la pose de antes de localizarse (con el robot corrido 18 cm del origen,
+        volvía al origen).
 
         El localizer publica una con cada scan: si dejan de llegar, control frena.
         """
@@ -198,7 +201,10 @@ class Navigator(Node):
         self.reports.append((msg.point.x, msg.point.y))
 
     def on_imu(self, msg):
-        """Integra el giróscopo (t, giro) para near, como localizer.on_imu. Sin sesgo: en los ~0.1 s entre el scan y el control, 0.02 rad/s son 0.1°."""
+        """
+        Integra el giróscopo (t, giro) para near, como localizer.on_imu. Sin sesgo: en los ~0.1 s entre el scan y el
+        control, 0.02 rad/s son 0.1°.
+        """
         if self.imu_row is None:
             try: self.imu_row = z_row(self.tf.lookup_transform(self.base_frame, msg.header.frame_id, Time()).transform.rotation)
             except Exception: return
@@ -210,10 +216,11 @@ class Navigator(Node):
 
     def on_scan(self, msg):
         """
-        Guarda los puntos del scan en el frame map (obstáculos, candidatos) y en base_footprint (near, para frenar), con la TF de su instante (use_scan).
-        Si todavía no llegó, queda pendiente y se reintenta en cada ciclo de control: en el bag, al llegar el scan falta la TF de odom en el 35 % de los
-        casos y llega 18 ms después (mediana; máx. 39). Descartarlos dejaba hasta 0.4 s sin lidar nuevo. Antes de reemplazarlo, el pendiente tiene otra
-        oportunidad.
+        Guarda los puntos del scan en el frame map (obstáculos, candidatos) y en base_footprint (near, para frenar), con
+        la TF de su instante (use_scan).
+        Si todavía no llegó, queda pendiente y se reintenta en cada ciclo de control: en el bag, al llegar el scan falta
+        la TF de odom en el 35 % de los casos y llega 18 ms después (mediana; máx. 39). Descartarlos dejaba hasta 0.4 s
+        sin lidar nuevo. Antes de reemplazarlo, el pendiente tiene otra oportunidad.
         """
         self.use_scan()
         self.pending = msg
@@ -221,24 +228,26 @@ class Navigator(Node):
 
     def use_scan(self):
         """
-        Pasa el scan pendiente al frame map con la TF del instante del scan, no con la última: girando, la diferencia corre las paredes e inventa obstáculos.
-        También lo guarda en base_footprint con la pose de las ruedas en ese instante (scan_base, para near). Si la TF todavía no está, sigue pendiente.
+        Pasa el scan pendiente al frame map con la TF del instante del scan, no con la última: girando, la diferencia
+        corre las paredes e inventa obstáculos.
+        También lo guarda en base_footprint con la pose de las ruedas en ese instante (scan_base, para near). Si la TF
+        todavía no está, sigue pendiente.
         """
         msg = self.pending
         if msg is None: return
 
         t = Time.from_msg(msg.header.stamp) + Duration(seconds=msg.time_increment * (len(msg.ranges) - 1) / 2)
         self.scan_t = t.nanoseconds
-        if self.ready_at is None or self.scan_t <= self.ready_at: # antes, la TF todavía no tenía la largada: las paredes salían corridas y parecían objetos
+        if self.ready_at is None or self.scan_t <= self.ready_at:
+            # antes, la TF todavía no tenía la largada: las paredes salían corridas y parecían objetos
             self.pending = None
             return
 
         try:
             tf = self.tf.lookup_transform('map', msg.header.frame_id, t).transform
             ob = self.tf.lookup_transform('odom', self.base_frame, t).transform
-            mount = self.tf.lookup_transform(self.base_frame, msg.header.frame_id, Time()).transform # dónde está el lidar en el robot: fijo
-        except Exception:
-            return
+            mount = self.tf.lookup_transform(self.base_frame, msg.header.frame_id, Time()).transform  # dónde está el lidar en el robot: fijo
+        except Exception: return
 
         self.pending = None
 
@@ -250,18 +259,19 @@ class Navigator(Node):
         x, y = r[ok] * np.cos(a[ok]), r[ok] * np.sin(a[ok])
         self.lidar = np.column_stack([tf.translation.x + c * x - s * y, tf.translation.y + s * x + c * y])
         c, s = math.cos(yaw_of(mount.rotation)), math.sin(yaw_of(mount.rotation))
-        base = np.column_stack([mount.translation.x + c * x - s * y, mount.translation.y + s * x + c * y]) # mismos puntos y orden que lidar (is_wall)
+        base = np.column_stack([mount.translation.x + c * x - s * y, mount.translation.y + s * x + c * y])  # mismos puntos y orden que lidar (is_wall)
         self.scan_base = (t.nanoseconds * 1e-9, (ob.translation.x, ob.translation.y, yaw_of(ob.rotation)), base)
         self.lidar_at = self.get_clock().now()
 
     # ---------- control ----------
     def near(self):
         """
-        El último scan en el frame del robot ahora, para frenar (_clear_ahead, tail_barrier, slow_down, giro_lidar): corrido lo que se movió el robot desde
-        el scan, con la traslación de las ruedas (odom) y el giro del giróscopo, que no patina. Si la IMU no llega o gira al revés, el giro de las ruedas
-        (turn_source). No pasa por map: una corrección del localizer en el medio no mueve lo que tiene cerca. En el bag, llevando cada scan al siguiente,
-        calza 0.90 cm (p95; 0.62 con la escala del encoder corregida) contra 1.22 pasando por map. None si todavía no hay scan o falta la TF (Mission usa
-        la pose).
+        El último scan en el frame del robot ahora, para frenar (_clear_ahead, tail_barrier, slow_down, giro_lidar):
+        corrido lo que se movió el robot desde el scan, con la traslación de las ruedas (odom) y el giro del giróscopo,
+        que no patina. Si la IMU no llega o gira al revés, el giro de las ruedas (turn_source). No pasa por map: una
+        corrección del localizer en el medio no mueve lo que tiene cerca. En el bag, llevando cada scan al siguiente,
+        calza 0.90 cm (p95; 0.62 con la escala del encoder corregida) contra 1.22 pasando por map. None si todavía no
+        hay scan o falta la TF (Mission usa la pose).
         """
         if self.scan_base is None: return None
 
@@ -274,17 +284,15 @@ class Navigator(Node):
         d_odom, d_imu = normalize(th1 - th0), None if a is None or b is None else b[0] - a[0]
         dth = d_imu if turn_source(d_odom, d_imu, self.imu_check) == 'imu' else d_odom
         c, s = math.cos(th0), math.sin(th0)
-        dx, dy = c * (x1 - x0) + s * (y1 - y0), -s * (x1 - x0) + c * (y1 - y0) # lo que avanzó, en el frame del robot en el scan
+        dx, dy = c * (x1 - x0) + s * (y1 - y0), -s * (x1 - x0) + c * (y1 - y0)  # lo que avanzó, en el frame del robot en el scan
         c, s = math.cos(dth), math.sin(dth)
 
         return (pts - (dx, dy)) @ np.array([[c, -s], [s, c]])
 
     def pose(self):
         """Pose (x, y, yaw) del robot en map con la última TF. None si todavía no está."""
-        try:
-            tf = self.tf.lookup_transform('map', self.base_frame, Time()).transform
-        except Exception:
-            return None
+        try: tf = self.tf.lookup_transform('map', self.base_frame, Time()).transform
+        except Exception: return None
 
         return tf.translation.x, tf.translation.y, yaw_of(tf.rotation)
 
@@ -292,18 +300,19 @@ class Navigator(Node):
         """
         Un ciclo de control (rate_hz): pose -> Mission.step -> /cmd_vel, y /done al terminar.
 
-        La Mission se crea con la primera pose localizada, que es la largada. Si algo falla, frena y sigue intentando: un crash es la corrida perdida.
+        La Mission se crea con la primera pose localizada, que es la largada. Si algo falla, frena y sigue intentando:
+        un crash es la corrida perdida.
         """
-        if self.board is None or self.finished: return # antes del mapa no se mueve; después de /done, tampoco
+        if self.board is None or self.finished: return  # antes del mapa no se mueve; después de /done, tampoco
 
         try:
-            self.use_scan() # el scan que esperaba su TF
+            self.use_scan()  # el scan que esperaba su TF
             pose = self.pose()
             if pose is None or self.start is None: return
 
             if self.mission is None:
-                if math.hypot(pose[0] - self.start[0], pose[1] - self.start[1]) > self.start_match: return # la TF todavía no tiene la largada del localizer
-                self.mission, self.ready_at = Mission(self.board, self.start, self), self.scan_t # los scans que siguen ya tienen la largada en la TF
+                if math.hypot(pose[0] - self.start[0], pose[1] - self.start[1]) > self.start_match: return  # la TF todavía no tiene la largada del localizer
+                self.mission, self.ready_at = Mission(self.board, self.start, self), self.scan_t  # los scans que siguen ya tienen la largada en la TF
                 self.get_logger().info(f'recorrido: {len(self.mission.points)} puntos de paso desde ({pose[0]:.2f}, {pose[1]:.2f})')
 
             # Sin /jar/pose o sin scan nuevo, frena: se cayó el localizer o el lidar, y la TF sigue con la odometría sola (y el lidar, congelado)
@@ -311,8 +320,9 @@ class Navigator(Node):
             lost = [name for name, at in (('/jar/pose', self.pose_at), ('scan', self.lidar_at)) if at is None or (now - at).nanoseconds * 1e-9 > self.sensor_timeout]
             if lost:
                 self.cmd_pub.publish(Twist())
-                self.mission.t_prev = self.mission.moved = None # al volver, ese rato no cuenta (dt = 0): ni mirando un candidato, ni tapado, ni sin moverse
-                if self.lidar_at is not None: # al arrancar, hasta el primer scan después de la largada, frena sin avisar
+                self.mission.t_prev = self.mission.moved = None  # al volver, ese rato no cuenta (dt = 0): ni mirando un candidato, ni tapado, ni sin moverse
+                if self.lidar_at is not None:
+                    # al arrancar, hasta el primer scan después de la largada, frena sin avisar
                     self.get_logger().warn(f'freno: hace más de {self.sensor_timeout:.1f} s que no llega {" ni ".join(lost)}', throttle_duration_sec=2.0)
                 return
 
@@ -321,8 +331,7 @@ class Navigator(Node):
             (vx, vy, w), done = self.mission.step(*pose, t, self.lidar, self.reports, self.victims, self.red, self.near())
 
             # Log: cambios de estado, candidatos, puntos salteados y qué lo frenó
-            if self.mission.state != state:
-                self.get_logger().info(f'{state} -> {self.mission.state} (punto {self.mission.k}, t={t:.0f} s)')
+            if self.mission.state != state: self.get_logger().info(f'{state} -> {self.mission.state} (punto {self.mission.k}, t={t:.0f} s)')
             while self.mission.log:
                 self.get_logger().info(f'{self.mission.log.pop(0)} (t={t:.0f} s)')
             if self.mission.blocked_since is not None and self.mission.blocker is not None:
@@ -334,7 +343,7 @@ class Navigator(Node):
                     f'({mx:.2f}, {my:.2f}) del mapa, a {float(self.board.distance(mx, my)):.2f} m de una pared del mapa; desde t={self.mission.blocked_since:.0f} s',
                     throttle_duration_sec=1.0)
 
-            if done: # primero /done, con las ruedas adentro; después el freno
+            if done:  # primero /done, con las ruedas adentro; después el freno
                 self.done_pub.publish(Empty())
                 self.finished = True
                 self.get_logger().info(f'/done en ({pose[0]:.2f}, {pose[1]:.2f}), t={t:.0f} s')
@@ -358,7 +367,7 @@ def main(args=None):
     try: rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException): pass
     except Exception:
-        if rclpy.ok(): raise # con ROS ya apagado (Ctrl+C, el launch), spin puede tirar RCLError al armar la espera: no es un error
+        if rclpy.ok(): raise  # con ROS ya apagado (Ctrl+C, el launch), spin puede tirar RCLError al armar la espera: no es un error
     finally:
         node.destroy_node()
         if rclpy.ok(): rclpy.shutdown()
