@@ -4,7 +4,7 @@
   <name>fierro</name>
   <version>0.1.0</version>
   <description>Búsqueda y rescate en un laberinto con ROS 2 (equipo Fierro, Challenge JAR 2026).</description>
-  <maintainer email="equipo@example.com">Equipo Fierro</maintainer>
+  <maintainer email="barralm@udesa.edu.ar">Máximo Barral</maintainer>
   <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>
