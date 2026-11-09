@@ -1,4 +1,4 @@
-"""Precisión de la detección de víctimas (detector.py) en escenas sintéticas, sin ROS ni simulador.
+"""Precisión de la detección de víctimas (detector.py) en escenas sintéticas, sin levantar ROS ni el simulador.
 
 Cada escena pone cajas de la competencia (0.25 x 0.25 x 0.30 m, colores de los .world: rojas = víctimas, azules =
 señuelos) frente al robot, simula el scan del lidar (1080 rayos, ruido de 1 cm) y la foto de la cámara (320x240,
@@ -16,11 +16,14 @@ Tabla por escenario (200 semillas): python3 test/test_detector.py
 import math
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pytest
 import yaml
 from scipy.spatial.transform import Rotation
+
+pytest.importorskip('rclpy')  # sin ROS 2 instalado se saltea: THRESHOLDS es del nodo de percepción
+
+import cv2
 
 from fierro.core import DetectionClusterer
 from fierro.detector import VisionProcessor, laser_points_to_pixels, mask_red

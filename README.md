@@ -170,7 +170,7 @@ python3 tools/juez.py --mundo maze_3_6x6 --mapa $SIM/maps/maze_3_6x6.yaml \
   --ground-truth --esperar-topic /scan --retardo 5 --duracion 300
 ```
 
-**La demo** se abre directo: `docs/index.html`, sin servidor. Para regenerarla después de cambiar el código, con Python y sin ROS: `pip install numpy scipy pyyaml pytest` y `python3 docs/demo.py`.
+**La demo** se abre directo: `docs/index.html`, sin servidor. Para regenerarla después de cambiar el código, con Python y sin ROS: `pip install numpy scipy pyyaml pytest` y `python3 docs/demo.py`. Con eso también anda `pytest`: prueba la lógica y saltea lo que necesita ROS.
 
 ## Créditos
 

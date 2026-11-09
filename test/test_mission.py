@@ -274,7 +274,7 @@ def test_return_at_full_speed_still_avoids_nearby_obstacle():
 
 def test_node_publishes_done_before_braking():
     """El nodo publica /done en el ciclo en que entran las ruedas, y recién después el freno."""
-    import rclpy
+    rclpy = pytest.importorskip('rclpy')
 
     from fierro.navigator import Navigator
 
@@ -535,7 +535,7 @@ def test_node_stops_without_pose_or_scan():
     El nodo frena si deja de llegar /jar/pose o el lidar: la TF seguiría con la odometría sola y el lidar quedaría
     congelado. Al arrancar espera el primer scan; al volver, el rato sin datos no cuenta para la misión (dt = 0).
     """
-    import rclpy
+    rclpy = pytest.importorskip('rclpy')
     from geometry_msgs.msg import PoseStamped
     from rclpy.duration import Duration
 
@@ -570,7 +570,7 @@ def test_node_retries_scan_until_its_tf_arrives():
     Si al llegar el scan todavía no está la TF de su instante (en el robot real, el 35 % de los scans), queda pendiente
     y se usa en el próximo ciclo.
     """
-    import rclpy
+    rclpy = pytest.importorskip('rclpy')
     from sensor_msgs.msg import LaserScan
 
     from fierro.navigator import Navigator
@@ -597,7 +597,7 @@ def test_node_retries_scan_until_its_tf_arrives():
 def test_node_near_moves_with_the_wheels_and_the_gyro_not_with_the_localizer():
     """near: el scan corrido lo que avanzó el robot según las ruedas y lo que giró según el giróscopo, sin pasar por
     map (un salto del localizer no lo mueve). Con la IMU al revés o sin IMU, el giro de las ruedas."""
-    import rclpy
+    rclpy = pytest.importorskip('rclpy')
     from rclpy.time import Time
     from sensor_msgs.msg import Imu, LaserScan
 

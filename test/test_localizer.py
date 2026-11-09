@@ -6,7 +6,10 @@ robot).
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
+
+pytest.importorskip('rclpy')  # sin ROS 2 instalado se saltea: ros_utils importa rclpy
 
 from fierro.ros_utils import turn_source
 

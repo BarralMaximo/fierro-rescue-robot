@@ -10,3 +10,6 @@ ignore = [
     "E731",  # lambdas cortas asignadas a un nombre
     "B905",  # zip(strict=...): agregarlo cambiaría el comportamiento
 ]
+
+[lint.per-file-ignores]
+"test/*" = ["E402"]  # pytest.importorskip('rclpy') va antes de los imports que necesitan ROS

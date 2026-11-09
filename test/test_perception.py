@@ -5,6 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+pytest.importorskip('rclpy')  # sin ROS 2 instalado se saltea
+
 from builtin_interfaces.msg import Time
 
 from fierro.perception import build_report
